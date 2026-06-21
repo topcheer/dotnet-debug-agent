@@ -1,0 +1,13 @@
+<Solution Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Product>DebugAgent</Product>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="src\\DebugAgent\\DebugAgent.csproj" />
+    <ProjectReference Include="demo\\DemoApi.csproj" />
+  </ItemGroup>
+
+</Solution>
