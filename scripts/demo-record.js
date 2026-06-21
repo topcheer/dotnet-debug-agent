@@ -20,7 +20,7 @@ const VERSION = 'v02';
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
 async function typeMessage(page, text, charDelay = 8) {
-  const input = page.locator('#msg-input');
+  const input = page.locator('#input');
   await input.click();
   await input.pressSequentially(text, { delay: charDelay });
 }
@@ -29,13 +29,13 @@ async function waitForAgentIdle(page, timeout = 120000) {
   // Wait for send button to be re-enabled
   try {
     await page.waitForFunction(() => {
-      const btn = document.querySelector('#send-btn');
+      const btn = document.querySelector('#send');
       return btn && !btn.disabled;
     }, { timeout });
   } catch {
     console.log('  Warning: Agent still busy, waiting more...');
     await page.waitForFunction(() => {
-      const btn = document.querySelector('#send-btn');
+      const btn = document.querySelector('#send');
       return btn && !btn.disabled;
     }, { timeout: 60000 }).catch(() => {
       console.log('  Warning: Force proceeding after extended wait');
@@ -62,8 +62,7 @@ async function waitForAgentIdle(page, timeout = 120000) {
 }
 
 async function sendAndWait(page, timeout = 120000) {
-  await page.waitForSelector('#send-btn:not([disabled])', { timeout: 10000 }).catch(() => {});
-  await page.locator('#send-btn').click();
+  await page.locator('#send').click();
   await waitForAgentIdle(page, timeout);
 }
 

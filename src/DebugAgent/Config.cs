@@ -23,7 +23,7 @@ public class LLMConfig
 {
     public string BaseUrl { get; set; } = "https://open.bigmodel.cn/api/coding/paas/v4";
     public string ApiKey { get; set; } = "";
-    public string Model { get; set; } = "glm-4.6";
+    public string Model { get; set; } = "glm-5.2";
     public double Temperature { get; set; } = 0.3;
     public int MaxTokens { get; set; } = 4096;
     public int MaxToolRounds { get; set; } = 25;

@@ -36,7 +36,7 @@ public static class DebugAgentExtensions
             {
                 BaseUrl = section["Llm:BaseUrl"] ?? "https://open.bigmodel.cn/api/coding/paas/v4",
                 ApiKey = section["Llm:ApiKey"] ?? "",
-                Model = section["Llm:Model"] ?? "glm-4.6",
+                Model = section["Llm:Model"] ?? "glm-5.2",
                 Temperature = double.TryParse(section["Llm:Temperature"], out var t) ? t : 0.3,
                 MaxTokens = int.TryParse(section["Llm:MaxTokens"], out var mt) ? mt : 4096,
                 MaxToolRounds = int.TryParse(section["Llm:MaxToolRounds"], out var mr) ? mr : 25,
