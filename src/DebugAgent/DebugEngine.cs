@@ -1,100 +1,227 @@
 using System.Collections.Concurrent;
+using System.Text;
 using System.Text.Json;
 
 namespace DebugAgents;
 
+/// <summary>
+/// Callback interface for streaming agent responses to the UI.
+/// </summary>
+public class ChatCallback
+{
+    public Action<string>? OnContent { get; set; }
+    public Action<string>? OnToolStart { get; set; }
+    public Action<string, string>? OnToolResult { get; set; }
+    public Action? OnComplete { get; set; }
+    public Action<string>? OnError { get; set; }
+    public Action<int, int, int>? OnContextCompressed { get; set; }
+}
+
+/// <summary>
+/// Core agent engine: orchestrates LLM calls, tool execution, and context compression.
+/// Matches Spring DebugAgentEngine logic exactly.
+/// </summary>
 public class DebugEngine
 {
     private readonly AgentConfig _config;
     private readonly LLMClient _llm;
-    private readonly ConcurrentDictionary<string, List<object>> _conversations = new();
-
-    private const string SystemPrompt = """
-You are an expert runtime debugging assistant embedded inside a live ASP.NET Core application.
-You have access to 50+ diagnostic tools across 10 inspectors that inspect the running process in real-time:
-- DI Container (registered services, lifetimes)
-- Configuration (sources, keys, values)
-- HTTP Endpoints (routing, middleware)
-- Health Checks (component status)
-- Logging (recent logs, search, stats)
-- EF Core (DbContext, migrations, connections)
-- Memory Cache (keys, values)
-- Background Services (hosted services)
-- .NET Runtime (memory, GC, thread pool)
-- HTTP Requests (recent, errors, stats)
-
-Your job: understand the problem, call tools to gather data, analyze results, and explain findings clearly.
-""";
-
-    public ToolRegistry Tools { get; } = GlobalRegistry.Instance;
+    private readonly ToolRegistry _tools;
+    private readonly ContextCompressor _compressor;
+    private readonly ConcurrentDictionary<string, ChatSession> _sessions = new();
 
     public DebugEngine(AgentConfig? config = null)
     {
         _config = config ?? AgentConfig.FromEnvironment();
         _llm = new LLMClient(_config.LLM);
+        _tools = GlobalRegistry.Instance;
 
-        // Auto-discover built-in inspectors
-        Tools.DiscoverTools(typeof(RuntimeInspector).Assembly);
+        // Auto-discover tools
+        _tools.DiscoverTools(typeof(DebugEngine).Assembly);
+
+        _compressor = new ContextCompressor(_llm, _config.LLM.ContextWindowTokens, 3);
     }
 
-    public async IAsyncEnumerable<(string EventType, object? Data)> ChatStreamAsync(string message, string sessionId = "default")
+    /// <summary>
+    /// Process a user message with streaming output via callback.
+    /// </summary>
+    public async Task ChatAsync(string userMessage, string sessionId, ChatCallback callback)
     {
-        var history = _conversations.GetOrAdd(sessionId, _ => new List<object> { new { role = "system", content = SystemPrompt } });
-        history.Add(new { role = "user", content = message });
-
-        var toolSchemas = Tools.AllSchemas();
-        var rounds = 0;
-
-        while (rounds <= _config.LLM.MaxToolRounds)
+        try
         {
-            rounds++;
-            var response = await _llm.ChatAsync(history, toolSchemas.Count > 0 ? toolSchemas : null);
-            var choice = response.GetProperty("choices")[0];
-            var msg = choice.GetProperty("message");
+            var session = _sessions.GetOrAdd(sessionId, id => new ChatSession(id));
+            session.AddMessage(ChatMessage.User(userMessage));
 
-            // Check for tool calls
-            if (msg.TryGetProperty("tool_calls", out var toolCalls))
+            await RunToolLoop(session, callback);
+        }
+        catch (Exception e)
+        {
+            callback.OnError?.Invoke($"Internal error: {e.Message}");
+        }
+    }
+
+    public void ClearSession(string sessionId)
+    {
+        if (_sessions.TryGetValue(sessionId, out var session))
+            session.Clear();
+    }
+
+    private async Task RunToolLoop(ChatSession session, ChatCallback callback)
+    {
+        int maxRounds = _config.LLM.MaxToolRounds;
+
+        for (int round = 0; round < maxRounds; round++)
+        {
+            // Check if context compression is needed
+            if (round > 0 && _compressor.NeedsCompression(session.CurrentContextTokens))
             {
-                // Add assistant message with tool calls
-                history.Add(JsonSerializer.Deserialize<JsonElement>(msg.GetRawText()));
-
-                foreach (var tc in toolCalls.EnumerateArray())
+                var result = _compressor.Compress(session);
+                if (result != null)
                 {
-                    var fn = tc.GetProperty("function");
-                    var toolName = fn.GetProperty("name").GetString()!;
-                    var argsStr = fn.GetProperty("arguments").GetString() ?? "{}";
-                    var args = JsonSerializer.Deserialize<Dictionary<string, object>>(argsStr) ?? new();
-
-                    yield return ("tool_call", new { tool = toolName, args });
-
-                    var result = Tools.Execute(toolName, args);
-
-                    yield return ("tool_result", new { tool = toolName, result });
-
-                    history.Add(new
-                    {
-                        role = "tool",
-                        tool_call_id = tc.GetProperty("id").GetString(),
-                        content = JsonSerializer.Serialize(result).Length > 12000
-                            ? JsonSerializer.Serialize(result)[..12000]
-                            : JsonSerializer.Serialize(result),
-                    });
+                    callback.OnContent?.Invoke($"\n\n> [Context auto-compressed: {result.OriginalTokens} → ~{result.CompressedTokens} tokens ({result.Strategy})]\n\n");
+                    callback.OnContextCompressed?.Invoke(result.OriginalTokens, result.CompressedTokens, result.RemovedRounds);
                 }
-                continue;
             }
 
-            // Final answer
-            var content = msg.TryGetProperty("content", out var contentEl) ? contentEl.GetString() ?? "" : "";
-            history.Add(new { role = "assistant", content });
+            // Build the request
+            var messages = new List<object>();
+            messages.Add(new { role = "system", content = SystemPrompt });
+            foreach (var msg in session.GetMessages())
+                messages.Add(msg.ToApiObject());
 
-            if (!string.IsNullOrEmpty(content))
-                yield return ("token", content);
+            var toolSchemas = _tools.AllSchemas();
 
-            yield return ("done", null);
-            yield break;
+            var contentBuilder = new StringBuilder();
+            List<ToolCallResult>? toolCalls = null;
+            string? finishReason = null;
+            bool hadError = false;
+
+            await _llm.StreamChatAsync(
+                messages,
+                toolSchemas,
+                "auto",
+                chunk =>
+                {
+                    contentBuilder.Append(chunk);
+                    callback.OnContent?.Invoke(chunk);
+                },
+                (calls, fr) =>
+                {
+                    toolCalls = calls;
+                    finishReason = fr;
+                },
+                error =>
+                {
+                    hadError = true;
+                    callback.OnError?.Invoke($"LLM API error: {error.Message}");
+                }
+            );
+
+            if (hadError) return;
+
+            if (toolCalls == null || toolCalls.Count == 0)
+            {
+                var content = contentBuilder.ToString();
+
+                // If empty content after tool calls, ask the LLM to summarize
+                if (string.IsNullOrEmpty(content) && round > 0)
+                {
+                    session.AddMessage(ChatMessage.Assistant(""));
+                    session.AddMessage(ChatMessage.User("Based on the tool results above, please provide a clear analysis and summary."));
+                    continue;
+                }
+
+                // No tool calls — final answer
+                session.AddMessage(ChatMessage.Assistant(content));
+                callback.OnComplete?.Invoke();
+                return;
+            }
+
+            // LLM wants tools
+            session.AddMessage(ChatMessage.Assistant(contentBuilder.ToString(), toolCalls));
+
+            // Execute each tool call
+            foreach (var tc in toolCalls)
+            {
+                var toolName = tc.Name ?? "";
+                var arguments = tc.Arguments ?? "";
+
+                callback.OnToolStart?.Invoke(toolName);
+
+                try
+                {
+                    var args = string.IsNullOrEmpty(arguments)
+                        ? new Dictionary<string, object>()
+                        : JsonSerializer.Deserialize<Dictionary<string, object>>(arguments) ?? new();
+                    var result = _tools.Execute(toolName, args);
+                    var jsonResult = JsonSerializer.Serialize(result);
+                    // Truncate very long results
+                    if (jsonResult.Length > 8000)
+                        jsonResult = jsonResult.Substring(0, 8000) + $"\n... (truncated, total {jsonResult.Length} chars)";
+
+                    callback.OnToolResult?.Invoke(toolName, jsonResult);
+                    session.AddMessage(ChatMessage.Tool(tc.Id, jsonResult));
+                }
+                catch (Exception e)
+                {
+                    var errorResult = $"{{\"error\": \"{e.Message}\"}}";
+                    callback.OnToolResult?.Invoke(toolName, errorResult);
+                    session.AddMessage(ChatMessage.Tool(tc.Id, errorResult));
+                }
+            }
         }
 
-        yield return ("token", "_Reached maximum tool-call rounds._");
-        yield return ("done", null);
+        // Reached max rounds — force final summary with tool_choice=none
+        var finalMessages = new List<object>();
+        finalMessages.Add(new { role = "system", content = SystemPrompt });
+        foreach (var msg in session.GetMessages())
+            finalMessages.Add(msg.ToApiObject());
+        finalMessages.Add(new
+        {
+            role = "system",
+            content = "You have reached the maximum number of tool-calling rounds. "
+                    + "Based on all the diagnostic data you have gathered so far, "
+                    + "provide a comprehensive analysis and actionable recommendations NOW. "
+                    + "Do not attempt to call more tools."
+        });
+
+        await _llm.StreamChatAsync(
+            finalMessages,
+            new List<object>(),
+            "none",
+            chunk => callback.OnContent?.Invoke(chunk),
+            (_, _) => callback.OnComplete?.Invoke(),
+            error =>
+            {
+                callback.OnContent?.Invoke("\n\n*I've gathered diagnostic data from multiple tools "
+                    + "but reached the analysis limit. Please ask a more specific question "
+                    + "about a particular component for deeper analysis.*");
+                callback.OnComplete?.Invoke();
+            }
+        );
     }
+
+    private string SystemPrompt =>
+        $"""
+        You are an expert ASP.NET Core debugging assistant.
+        You are running INSIDE the developer's application and have direct access
+        to its runtime state through diagnostic tools.
+
+        ## Your Capabilities
+        You can call tools to inspect the live application. You have {_tools.Names().Count} tools available
+        across 10 inspectors: DI Container, Configuration, HTTP Endpoints, Health Checks,
+        Logging, EF Core, Memory Cache, Background Services, .NET Runtime, and HTTP Requests.
+
+        ## Workflow
+        1. Understand the developer's problem description
+        2. Proactively call the most relevant tools to gather diagnostic data — DO NOT just ask questions
+        3. Analyze the collected data to identify root causes
+        4. Provide clear, actionable solutions with data evidence
+
+        ## Guidelines
+        - Be proactive: gather data with tools before answering
+        - Always present data in a readable format (tables, bullet points)
+        - Respond in the same language the developer uses (Chinese/English/etc.)
+        - When you find a problem, explain the root cause and give concrete fix suggestions
+        - You can call multiple tools in parallel if they are independent
+        """;
 }

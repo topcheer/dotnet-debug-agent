@@ -3,3 +3,14 @@ obj/
 *.user
 .env
 .DS_Store
+
+# Never commit secrets
+appsettings.*.Local.json
+appsettings.Secrets.json
+secrets.json
+
+# Demo runtime artifacts
+*.db
+*.db-journal
+demo-recordings/
+node_modules/

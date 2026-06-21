@@ -41,7 +41,7 @@ builder.Services.AddHttpClient("ExternalApi", client =>
 builder.Services.AddHostedService<OrderCleanupService>();
 
 // --- Debug Agent: one line to integrate ---
-builder.Services.AddDebugAgent();
+builder.Services.AddDebugAgent(builder.Configuration);
 
 var app = builder.Build();
 
