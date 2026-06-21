@@ -1,4 +1,4 @@
-namespace DebugAgent;
+namespace DebugAgents;
 
 public class AgentConfig
 {

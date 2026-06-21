@@ -2,7 +2,8 @@ namespace DebugAgents;
 
 internal static class ChatPage
 {
-    internal const string Html = """<!DOCTYPE html>
+    internal const string Html = """
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -60,5 +61,6 @@ while(true){var out=await reader.read();if(out.done)break;buf+=dec.decode(out.va
 for(var i=0;i<ls.length;i++){var l=ls[i];if(l.startsWith('event: '))var ev=l.slice(7).trim();else if(l.startsWith('data: ')){var da;try{da=JSON.parse(l.slice(6))}catch(ex){continue}if(ev==='token'){if(!cb)cb=addMsg('assistant','');ct+=da;cb.innerHTML=md(ct)}else if(ev==='tool_call')addTool(da.tool,da.args);else if(ev==='tool_result'){var d=document.createElement('div');d.className='tool-event';d.innerHTML='<span class="tool-name">result:'+da.tool+'</span>';var p=document.createElement('pre');p.style.fontSize='11px';p.textContent=JSON.stringify(da.result,null,2).slice(0,2000);d.appendChild(p);msgs.appendChild(d);msgs.scrollTop=msgs.scrollHeight}else if(ev==='done'){btn.disabled=false;input.focus()}}}}}catch(err){addMsg('assistant','Error: '+err.message)}btn.disabled=false;input.focus()});
 </script>
 </body>
-</html>""";
+</html>
+""";
 }

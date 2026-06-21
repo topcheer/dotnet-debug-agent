@@ -1,7 +1,8 @@
 using System.Reflection;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace DebugAgent;
+namespace DebugAgents;
 
 /// <summary>
 /// Marks a method as a debug tool discoverable by the agent.
@@ -37,6 +38,7 @@ public class ToolDefinition
     public string Name { get; set; } = "";
     public string Description { get; set; } = "";
     public Func<Dictionary<string, object>, object> Func { get; set; } = _ => new();
+    public bool IsAsync { get; set; }
     public Dictionary<string, ToolParamInfo> Params { get; set; } = new();
 }
 
@@ -49,6 +51,7 @@ public class ToolParamInfo
 
 /// <summary>
 /// Global registry for debug tools. Tools are auto-discovered via [DebugTool] attribute.
+/// Supports both sync and async methods (returning Task or Task{T}).
 /// </summary>
 public class ToolRegistry
 {
@@ -80,11 +83,21 @@ public class ToolRegistry
             return new { error = $"Unknown tool: {name}" };
         try
         {
-            return tool.Func(args);
+            var result = tool.Func(args);
+
+            // Unwrap Task results for async tools
+            if (tool.IsAsync && result is Task task)
+            {
+                task.Wait();
+                var resultProp = task.GetType().GetProperty("Result");
+                return resultProp?.GetValue(task) ?? new { };
+            }
+
+            return result;
         }
         catch (Exception e)
         {
-            return new { error = e.Message };
+            return new { error = e is TargetInvocationException tie ? tie.InnerException?.Message ?? e.Message : e.Message };
         }
     }
 
@@ -115,14 +128,18 @@ public class ToolRegistry
                     };
                 }
 
-                // Create delegate - handles both static and instance methods
+                var isAsync = typeof(Task).IsAssignableFrom(method.ReturnType);
+                var methodRef = method;
+                var typeRef = type;
+
+                // Create delegate - handles both static and instance methods, sync and async
                 Func<Dictionary<string, object>, object> func = args =>
                 {
-                    object? instance = method.IsStatic ? null : Activator.CreateInstance(type);
-                    var callArgs = method.GetParameters()
-                        .Select(p => args.TryGetValue(p.Name ?? "", out var val) ? Convert.ChangeType(val, p.ParameterType) : p.DefaultValue)
+                    object? instance = methodRef.IsStatic ? null : Activator.CreateInstance(typeRef);
+                    var callArgs = methodRef.GetParameters()
+                        .Select(p => args.TryGetValue(p.Name ?? "", out var val) ? ConvertValue(val, p.ParameterType) : p.DefaultValue)
                         .ToArray();
-                    return method.Invoke(instance, callArgs) ?? new { };
+                    return methodRef.Invoke(instance, callArgs) ?? new { };
                 };
 
                 Register(new ToolDefinition
@@ -130,10 +147,36 @@ public class ToolRegistry
                     Name = attr.Name,
                     Description = attr.Description,
                     Func = func,
+                    IsAsync = isAsync,
                     Params = parameters,
                 });
             }
         }
+    }
+
+    private static object? ConvertValue(object val, Type targetType)
+    {
+        if (val == null) return null;
+        if (targetType == typeof(string) && val is JsonElement je)
+            return je.GetString();
+        if (targetType == typeof(int) || targetType == typeof(long))
+        {
+            if (val is JsonElement jeInt) return jeInt.GetInt32();
+            return Convert.ChangeType(val, targetType);
+        }
+        if (targetType == typeof(double) || targetType == typeof(float) || targetType == typeof(decimal))
+        {
+            if (val is JsonElement jeNum) return jeNum.GetDouble();
+            return Convert.ChangeType(val, targetType);
+        }
+        if (targetType == typeof(bool))
+        {
+            if (val is JsonElement jeBool) return jeBool.GetBoolean();
+            return Convert.ChangeType(val, targetType);
+        }
+        if (val is JsonElement jeStr && targetType == typeof(string))
+            return jeStr.GetString();
+        return Convert.ChangeType(val, targetType);
     }
 
     private static string MapTypeToSchema(Type t) => t switch
@@ -141,7 +184,6 @@ public class ToolRegistry
         _ when t == typeof(int) || t == typeof(long) => "integer",
         _ when t == typeof(double) || t == typeof(float) || t == typeof(decimal) => "number",
         _ when t == typeof(bool) => "boolean",
-        _ when t == typeof(string) => "string",
         _ => "string",
     };
 }
