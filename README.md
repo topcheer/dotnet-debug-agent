@@ -3,8 +3,8 @@
 An AI-powered runtime debugging agent that embeds directly into your ASP.NET Core application. Add one package reference, configure an LLM key, and chat with your live app at `/agent` to inspect DI services, configuration, health checks, logs, EF Core, cache, endpoints, memory, GC, and much more.
 
 [![NuGet](https://img.shields.io/nuget/v/DebugAgent.svg)](https://www.nuget.org/packages/DebugAgent/)
-![Tools](https://img.shields.io/badge/tools-58-blue)
-![Inspectors](https://img.shields.io/badge/inspectors-20-green)
+![Tools](https://img.shields.io/badge/tools-70-blue)
+![Inspectors](https://img.shields.io/badge/inspectors-24-green)
 ![.NET](https://img.shields.io/badge/.NET-8.0%2B-512BD4)
 ![NuGet](https://img.shields.io/badge/NuGet-DebugAgent-004880)
 
@@ -70,7 +70,7 @@ dotnet run
 # Open http://localhost:5000/agent
 ```
 
-## Inspectors & Tools (58 tools across 20 inspectors)
+## Inspectors & Tools (70 tools across 24 inspectors)
 
 ### DI Container (ServiceCollectionInspector)
 
@@ -268,6 +268,46 @@ Monitor active WebSocket connections and statistics.
 |------|-------------|
 | `get_ws_connections` | List active WebSocket connections (path, duration, remote IP) |
 | `get_ws_stats` | WebSocket statistics (total connections, messages sent/received) |
+
+### CPU Profiler (CpuProfilerInspector) (v0.7.0)
+
+Profile CPU usage and identify hot paths in managed code.
+
+| Tool | Description |
+|------|-------------|
+| `start_cpu_profile` | Start a CPU profiling session (EventPipe/dotnet-trace) |
+| `stop_cpu_profile` | Stop CPU profiling and return collected profile data |
+| `get_top_functions` | Get top CPU-consuming methods from the current profile |
+
+### Memory Leak Detector (MemoryLeakInspector) (v0.7.0)
+
+Detect memory leaks via GC heap snapshots and object graph analysis.
+
+| Tool | Description |
+|------|-------------|
+| `take_heap_snapshot` | Capture a GC heap snapshot for leak analysis |
+| `compare_heap_snapshots` | Compare two heap snapshots to identify retained object growth |
+| `get_leak_candidates` | Identify objects likely to be memory leaks |
+
+### Deployment/Build Info (DeploymentInfoInspector) (v0.7.0)
+
+Inspect build metadata, deployment environment, and .NET runtime version.
+
+| Tool | Description |
+|------|-------------|
+| `get_build_info` | Assembly version, commit hash, and build configuration |
+| `get_deployment_info` | Deployment environment, container, and orchestration metadata |
+| `get_runtime_version` | .NET runtime version, framework, and feature flags |
+
+### Snapshot & Diff (SnapshotDiffInspector) (v0.7.0)
+
+Capture and compare runtime state snapshots to track changes over time.
+
+| Tool | Description |
+|------|-------------|
+| `take_snapshot` | Capture a runtime state snapshot |
+| `compare_snapshots` | Compare two snapshots to identify state changes |
+| `list_snapshots` | List all saved snapshots with timestamps |
 
 ## Configuration
 
