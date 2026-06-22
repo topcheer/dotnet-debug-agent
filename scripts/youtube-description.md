@@ -76,7 +76,7 @@ Open `http://localhost:5000/agent` and start chatting with your app.
 
 ### GitHub
 
-https://github.com/topcheer/dotnet-debug-agent
+github.com/topcheer/dotnet-debug-agent
 
 ### Tags
 
