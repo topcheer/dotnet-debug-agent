@@ -5,11 +5,8 @@
 #   git tag v0.2.0
 #   git push origin v0.2.0
 #
-# Uses NuGet Trusted Publishing (OIDC) — no API token needed.
-# Configure at: https://www.nuget.org/account#apikeys-dependents
-#   Repository: topcheer/dotnet-debug-agent
-#   Workflow: nuget-publish.yml
-#   Environment: nuget
+# Uses NuGet Trusted Publishing (OIDC) via NuGet/login action.
+# Configure at: https://www.nuget.org/account#trusted-publishing
 # ─────────────────────────────────────────────────────────────────
 name: nuget
 
@@ -51,8 +48,14 @@ jobs:
       - name: Pack
         run: dotnet pack src/DebugAgent/DebugAgent.csproj -c Release -o dist -p:PackageVersion=${{ steps.version.outputs.version }}
 
+      - name: Login to NuGet (OIDC)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          nuget-version: '6.11.0'
+
       - name: Publish to NuGet
-        run: dotnet nuget push "dist/DebugAgent.${{ steps.version.outputs.version }}.nupkg" --source https://api.nuget.org/v3/index.json --skip-duplicate
+        run: dotnet nuget push "dist/DebugAgent.${{ steps.version.outputs.version }}.nupkg" --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -64,10 +67,4 @@ jobs:
             ### NuGet
             ```
             dotnet add package DebugAgent --version ${{ steps.version.outputs.version }}
-            ```
-
-            ### Quick Start
-            ```csharp
-            builder.Services.AddDebugAgent(builder.Configuration);
-            app.MapDebugAgent();
             ```
