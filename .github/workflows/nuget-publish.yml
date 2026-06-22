@@ -5,9 +5,11 @@
 #   git tag v0.2.0
 #   git push origin v0.2.0
 #
-# Requires secret: NUGET_API_KEY
-# Get it at: https://www.nuget.org/account/apikeys
-# Add at: https://github.com/topcheer/dotnet-debug-agent/settings/secrets/actions
+# Uses NuGet Trusted Publishing (OIDC) — no API token needed.
+# Configure at: https://www.nuget.org/account#apikeys-dependents
+#   Repository: topcheer/dotnet-debug-agent
+#   Workflow: nuget-publish.yml
+#   Environment: nuget
 # ─────────────────────────────────────────────────────────────────
 name: nuget
 
@@ -21,11 +23,13 @@ concurrency:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   publish:
     name: Publish to NuGet
     runs-on: ubuntu-latest
+    environment: nuget
     steps:
       - uses: actions/checkout@v4
 
@@ -40,7 +44,6 @@ jobs:
           TAG="${GITHUB_REF#refs/tags/}"
           VERSION="${TAG#v}"
           echo "Tag: $TAG  Version: $VERSION"
-          # Update version in csproj
           sed -i "s|<Version>.*</Version>|<Version>${VERSION}</Version>|" src/DebugAgent/DebugAgent.csproj
           grep "<Version>" src/DebugAgent/DebugAgent.csproj
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
@@ -49,7 +52,7 @@ jobs:
         run: dotnet pack src/DebugAgent/DebugAgent.csproj -c Release -o dist -p:PackageVersion=${{ steps.version.outputs.version }}
 
       - name: Publish to NuGet
-        run: dotnet nuget push "dist/DebugAgent.${{ steps.version.outputs.version }}.nupkg" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+        run: dotnet nuget push "dist/DebugAgent.${{ steps.version.outputs.version }}.nupkg" --source https://api.nuget.org/v3/index.json --skip-duplicate
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
