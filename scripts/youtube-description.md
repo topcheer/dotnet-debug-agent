@@ -85,14 +85,13 @@ github.com/topcheer/dotnet-debug-agent
 ## Chapters
 
 00:00 Introduction
-01:15 .NET Runtime — Memory, GC, Thread Pool
-03:20 DI Container + Configuration
-05:30 HTTP Endpoints + Request Tracking
-07:10 Health Checks + Logging
-09:15 EF Core + Database
-10:50 Memory Cache + Background Services
-12:20 Comprehensive Multi-Tool Debugging
-14:00 Summary + Quick Start Guide
+00:33 .NET Runtime — Memory, GC, Thread Pool
+03:04 DI Container + Configuration
+05:35 HTTP Endpoints + Request Tracking
+08:05 Health Checks + Logging
+10:36 EF Core + Database
+13:08 Memory Cache + Background Services
+15:40 Comprehensive Multi-Tool Debugging
 
 ---
 
