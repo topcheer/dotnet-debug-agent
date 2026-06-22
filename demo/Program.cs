@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net.WebSockets;
 using DebugAgents;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
@@ -40,10 +41,37 @@ builder.Services.AddHttpClient("ExternalApi", client =>
 // Background service for cleanup
 builder.Services.AddHostedService<OrderCleanupService>();
 
+// CORS configuration (for SecurityInspector demo)
+builder.Services.AddCors(opt =>
+{
+    opt.AddDefaultPolicy(p => p
+        .WithOrigins("http://localhost:3000", "https://localhost:3000")
+        .AllowAnyMethod()
+        .AllowAnyHeader()
+        .AllowCredentials());
+});
+
 // --- Debug Agent: one line to integrate ---
 builder.Services.AddDebugAgent(builder.Configuration);
 
+// --- Feature flag registration (for FeatureFlagInspector demo) ---
+FeatureFlagRegistry.RegisterFeatureFlag("new-order-ui", true, "v2");
+FeatureFlagRegistry.RegisterFeatureFlag("bulk-export", false, "beta");
+FeatureFlagRegistry.RegisterFeatureFlag("advanced-search", true, "experimental");
+FeatureFlagRegistry.RegisterFeatureFlag("legacy-api", true, "default");
+
+// --- Outbound HTTP tracking (for OutboundHttpInspector demo) ---
+builder.Services.AddHttpClient("TrackedExternalApi", client =>
+{
+    client.BaseAddress = new Uri("https://httpbin.org");
+    client.Timeout = TimeSpan.FromSeconds(10);
+}).AddHttpMessageHandler(() => new OutboundHttpHandler("TrackedExternalApi"));
+
 var app = builder.Build();
+
+// --- Enable CORS and WebSockets ---
+app.UseCors();
+app.UseWebSockets();
 
 // --- Auto-migrate database ---
 using (var scope = app.Services.CreateScope())
@@ -72,7 +100,19 @@ using (var scope = app.Services.CreateScope())
 app.Use(async (ctx, next) =>
 {
     var sw = Stopwatch.StartNew();
-    await next();
+    try
+    {
+        await next();
+    }
+    catch (Exception ex)
+    {
+        // Error tracking: capture unhandled exceptions
+        ErrorTracker.RecordError(ex, ctx.Request.Path);
+        sw.Stop();
+        ctx.Response.StatusCode = 500;
+        await ctx.Response.WriteAsJsonAsync(new { error = "Internal server error", message = ex.Message });
+        return;
+    }
     sw.Stop();
     HttpRequestTracker.Record(
         ctx.Request.Method,
@@ -140,9 +180,85 @@ app.MapGet("/api/slow", async () =>
     return Results.Ok(new { message = "This was slow" });
 });
 
-// Error endpoint (for error stats demo)
+// Error endpoint (for error tracking demo - actually throws)
 app.MapGet("/api/error", () =>
-    Results.Json(new { error = "Intentional error for demo" }, statusCode: 500));
+{
+    throw new InvalidOperationException("Intentional error for demo - captured by ErrorTracker");
+});
+
+// Another error endpoint with different exception type
+app.MapGet("/api/error/null-ref", () =>
+{
+    throw new NullReferenceException("Simulated null reference for error stats demo");
+});
+
+// Feature flag check endpoint
+app.MapGet("/api/feature-flag/{name}", (string name) =>
+{
+    if (FeatureFlagRegistry.TryEvaluate(name, out var enabled))
+        return Results.Ok(new { flag = name, enabled, variant = FeatureFlagRegistry.Get(name)?.Variant ?? "default" });
+    return Results.NotFound(new { error = $"Flag '{name}' not registered" });
+});
+
+// Outbound HTTP call with tracking (for OutboundHttpInspector demo)
+app.MapGet("/api/tracked-external", async (IHttpClientFactory httpFactory) =>
+{
+    var client = httpFactory.CreateClient("TrackedExternalApi");
+    try
+    {
+        var resp = await client.GetAsync("/get");
+        var content = await resp.Content.ReadAsStringAsync();
+        return Results.Ok(new { status = (int)resp.StatusCode, body_preview = content[..Math.Min(200, content.Length)] });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem("External call failed: " + ex.Message);
+    }
+});
+
+// WebSocket endpoint (for WebSocketInspector demo)
+app.MapGet("/ws", async (HttpContext ctx, ILogger<Program> logger) =>
+{
+    if (!ctx.WebSockets.IsWebSocketRequest)
+    {
+        ctx.Response.StatusCode = 400;
+        await ctx.Response.WriteAsync("WebSocket connection required");
+        return;
+    }
+
+    using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
+    var connId = Guid.NewGuid().ToString("N")[..8];
+    var remoteIp = ctx.Connection.RemoteIpAddress?.ToString() ?? "";
+    WebSocketRegistry.RegisterWebSocket(connId, ws, remoteIp, "/ws");
+    logger.LogInformation("WebSocket connected: {ConnId} from {Ip}", connId, remoteIp);
+
+    var buffer = new byte[4096];
+    try
+    {
+        while (ws.State == WebSocketState.Open)
+        {
+            var result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+            if (result.MessageType == WebSocketMessageType.Close)
+                break;
+
+            WebSocketRegistry.RecordMessage(connId, false);
+
+            // Echo back
+            var msg = System.Text.Encoding.UTF8.GetBytes($"Echo [{connId}]: {System.Text.Encoding.UTF8.GetString(buffer, 0, result.Count)}");
+            await ws.SendAsync(new ArraySegment<byte>(msg), WebSocketMessageType.Text, true, CancellationToken.None);
+            WebSocketRegistry.RecordMessage(connId, true);
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning("WebSocket {ConnId} error: {Error}", connId, ex.Message);
+    }
+    finally
+    {
+        WebSocketRegistry.UnregisterWebSocket(connId);
+        logger.LogInformation("WebSocket disconnected: {ConnId}", connId);
+    }
+});
 
 // External API call (exercises HttpClient factory + Polly)
 app.MapGet("/api/external-test", async (IHttpClientFactory httpFactory, ILogger<Program> logger) =>

@@ -3,8 +3,8 @@
 An AI-powered runtime debugging agent that embeds directly into your ASP.NET Core application. Add one package reference, configure an LLM key, and chat with your live app at `/agent` to inspect DI services, configuration, health checks, logs, EF Core, cache, endpoints, memory, GC, and much more.
 
 [![NuGet](https://img.shields.io/nuget/v/DebugAgent.svg)](https://www.nuget.org/packages/DebugAgent/)
-![Tools](https://img.shields.io/badge/tools-50%2B-blue)
-![Inspectors](https://img.shields.io/badge/inspectors-10-green)
+![Tools](https://img.shields.io/badge/tools-58-blue)
+![Inspectors](https://img.shields.io/badge/inspectors-20-green)
 ![.NET](https://img.shields.io/badge/.NET-8.0%2B-512BD4)
 ![NuGet](https://img.shields.io/badge/NuGet-DebugAgent-004880)
 
@@ -70,7 +70,7 @@ dotnet run
 # Open http://localhost:5000/agent
 ```
 
-## Inspectors & Tools (50+ tools across 10 inspectors)
+## Inspectors & Tools (58 tools across 20 inspectors)
 
 ### DI Container (ServiceCollectionInspector)
 
@@ -175,6 +175,100 @@ Track HTTP requests passing through the middleware pipeline.
 | `get_slow_requests` | Requests slower than a threshold (default 500ms) |
 | `get_error_requests` | Requests with 4xx/5xx status codes |
 
+### Security (SecurityInspector)
+
+Inspect authentication, authorization policies, and CORS configuration.
+
+| Tool | Description |
+|------|-------------|
+| `get_auth_config` | Get authentication configuration (schemes, handlers, default scheme) |
+| `get_authorization_policies` | List all authorization policies and their requirements |
+| `get_cors_config` | Get CORS policy details (allowed origins, methods, headers) |
+
+### Error Tracking (ErrorTrackingInspector)
+
+Track and analyze recent application errors and exception statistics.
+
+| Tool | Description |
+|------|-------------|
+| `get_recent_errors` | Get recent unhandled exceptions and error-level events |
+| `get_error_stats` | Aggregate error statistics (count by type, frequency, trends) |
+
+### Locks & Concurrency (LockInspector)
+
+Diagnose thread pool starvation, lock contention, and async state issues.
+
+| Tool | Description |
+|------|-------------|
+| `get_thread_pool_starvation` | Detect thread pool starvation indicators and queue depth |
+| `get_lock_contention` | Get lock contention statistics and contention rate |
+| `get_async_state` | Inspect async state machine details and pending continuations |
+
+### Feature Flags (FeatureFlagInspector)
+
+Inspect and evaluate feature flags at runtime.
+
+| Tool | Description |
+|------|-------------|
+| `get_feature_flags` | List all registered feature flags and their current state |
+| `evaluate_flag` | Evaluate a specific feature flag for a given context |
+
+### Endpoint Testing (EndpointTestingInspector)
+
+Test endpoints directly from within the running application.
+
+| Tool | Description |
+|------|-------------|
+| `test_endpoint` | Send a test request to an endpoint and get the response |
+| `batch_test_endpoints` | Run multiple endpoint tests in a single batch |
+| `get_endpoint_coverage` | Get endpoint test coverage report (tested vs untested) |
+
+### Metrics (MetricsInspector)
+
+Inspect system-level metrics, custom counters, and event counters.
+
+| Tool | Description |
+|------|-------------|
+| `get_system_metrics` | Get system-level metrics (CPU, memory, GC, throughput) |
+| `get_custom_counters` | List all custom performance counters registered in the app |
+| `get_event_counters` | Get EventCounters data (runtime and custom event sources) |
+
+### File Handles (FileHandleInspector)
+
+Monitor open file handles and handle limits.
+
+| Tool | Description |
+|------|-------------|
+| `get_handle_count` | Get current count of open OS handles (files, sockets, pipes) |
+| `get_handle_limit` | Get the maximum handle limit and current utilization |
+
+### Outbound HTTP (OutboundHttpInspector)
+
+Track outbound HTTP calls made by the application.
+
+| Tool | Description |
+|------|-------------|
+| `get_outbound_http_summary` | Summary of outbound HTTP calls (hosts, methods, status codes) |
+| `get_outbound_http_errors` | Outbound HTTP calls that resulted in errors or timeouts |
+
+### Redis (RedisInspector)
+
+Inspect Redis connection info and connection pool statistics.
+
+| Tool | Description |
+|------|-------------|
+| `get_redis_info` | Get Redis server info (version, memory, connected clients) |
+| `get_redis_pool_stats` | Get Redis connection pool stats (pool size, utilization) |
+
+### WebSockets (WebSocketInspector)
+
+Monitor active WebSocket connections and statistics.
+
+| Tool | Description |
+|------|-------------|
+| `get_ws_connections` | List active WebSocket connections (path, duration, remote IP) |
+| `get_ws_stats` | WebSocket statistics (total connections, messages sent/received) |
+
 ## Configuration
 
 ```json
@@ -267,7 +361,17 @@ DebugAgent/
     ├── LoggingInspector.cs          # Log capture and search
     ├── EfCoreInspector.cs           # EF Core DbContext
     ├── CacheInspector.cs            # IMemoryCache
-    └── BackgroundServiceInspector.cs # IHostedService
+    ├── BackgroundServiceInspector.cs # IHostedService
+    ├── SecurityInspector.cs          # Auth, authorization, CORS
+    ├── ErrorTrackingInspector.cs     # Error tracking and stats
+    ├── LockInspector.cs             # Locks, thread pool, async state
+    ├── FeatureFlagInspector.cs      # Feature flags
+    ├── EndpointTestingInspector.cs   # Endpoint testing
+    ├── MetricsInspector.cs          # System metrics and counters
+    ├── FileHandleInspector.cs       # File handle monitoring
+    ├── OutboundHttpInspector.cs     # Outbound HTTP tracking
+    ├── RedisInspector.cs            # Redis info and pool stats
+    └── WebSocketInspector.cs        # WebSocket connections
 ```
 
 ## How It Works

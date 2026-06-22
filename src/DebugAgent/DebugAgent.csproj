@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackageId>DebugAgent</PackageId>
-    <Version>0.3.0</Version>
+    <Version>0.4.0</Version>
     <Authors>ggcode</Authors>
     <Company>ggcode</Company>
     <Description>AI-powered runtime debugging agent for ASP.NET Core. 34 diagnostic tools across 10 inspectors. Supports .NET 8, 9, and 10.</Description>
