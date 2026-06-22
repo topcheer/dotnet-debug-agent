@@ -2,6 +2,24 @@
 
 An AI-powered runtime debugging agent that embeds directly into your ASP.NET Core application. Add one package reference, configure an LLM key, and chat with your live app at `/agent` to inspect DI services, configuration, health checks, logs, EF Core, cache, endpoints, memory, GC, and much more.
 
+[![NuGet](https://img.shields.io/nuget/v/DebugAgent.svg)](https://www.nuget.org/packages/DebugAgent/)
+![Tools](https://img.shields.io/badge/tools-50%2B-blue)
+![Inspectors](https://img.shields.io/badge/inspectors-10-green)
+![.NET](https://img.shields.io/badge/.NET-8.0%2B-512BD4)
+![NuGet](https://img.shields.io/badge/NuGet-DebugAgent-004880)
+
+## Version Support
+
+| .NET Version | Type | Status |
+|-------------|------|--------|
+| 6.0 (EOL)   | LTS  | Not supported |
+| 7.0 (EOL)   | STS  | Not supported |
+| 8.0         | LTS  | Minimum supported |
+| 9.0         | STS  | Supported |
+| 10.0        | STS  | Supported |
+
+> Multi-targets `net8.0;net9.0;net10.0`. Uses C# 12 features (primary constructors, raw string literals). `RollForward: LatestMajor` ensures compatibility with future versions.
+
 ## Quick Start
 
 ### 1. Add the agent to your project
