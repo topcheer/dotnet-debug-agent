@@ -1,0 +1,70 @@
+# ─────────────────────────────────────────────────────────────────
+# nuget-publish — Push a tag `v1.2.3` to publish to NuGet
+#
+# Usage:
+#   git tag v0.2.0
+#   git push origin v0.2.0
+#
+# Requires secret: NUGET_API_KEY
+# Get it at: https://www.nuget.org/account/apikeys
+# Add at: https://github.com/topcheer/dotnet-debug-agent/settings/secrets/actions
+# ─────────────────────────────────────────────────────────────────
+name: nuget
+
+on:
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: publish-nuget-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Publish to NuGet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Sync version from tag
+        id: version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          echo "Tag: $TAG  Version: $VERSION"
+          # Update version in csproj
+          sed -i "s|<Version>.*</Version>|<Version>${VERSION}</Version>|" src/DebugAgent/DebugAgent.csproj
+          grep "<Version>" src/DebugAgent/DebugAgent.csproj
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Pack
+        run: dotnet pack src/DebugAgent/DebugAgent.csproj -c Release -o dist -p:PackageVersion=${{ steps.version.outputs.version }}
+
+      - name: Publish to NuGet
+        run: dotnet nuget push "dist/DebugAgent.${{ steps.version.outputs.version }}.nupkg" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          body: |
+            ### NuGet
+            ```
+            dotnet add package DebugAgent --version ${{ steps.version.outputs.version }}
+            ```
+
+            ### Quick Start
+            ```csharp
+            builder.Services.AddDebugAgent(builder.Configuration);
+            app.MapDebugAgent();
+            ```
