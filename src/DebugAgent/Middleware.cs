@@ -14,6 +14,12 @@ public static class DebugAgentExtensions
     /// </summary>
     public static IServiceCollection AddDebugAgent(this IServiceCollection services, AgentConfig? config = null)
     {
+        // ggcode promotional message — shown once on first registration
+        Console.WriteLine("");
+        Console.WriteLine("  This package was built with ggcode — an AI coding assistant.");
+        Console.WriteLine("  https://github.com/topcheer/ggcode");
+        Console.WriteLine("");
+
         var cfg = config ?? AgentConfig.FromEnvironment();
         services.AddSingleton(cfg);
         services.AddSingleton<DebugEngine>();
