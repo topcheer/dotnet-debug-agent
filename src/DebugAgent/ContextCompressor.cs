@@ -27,7 +27,9 @@ public class ContextCompressor
 
     public bool NeedsCompression(int currentTokens) => currentTokens > _maxContextTokens;
 
-    public CompressionResult? Compress(ChatSession session)
+    public CompressionResult? Compress(ChatSession session) => CompressAsync(session).GetAwaiter().GetResult();
+
+    public async Task<CompressionResult?> CompressAsync(ChatSession session)
     {
         var originalTokens = session.CurrentContextTokens;
         if (!NeedsCompression(originalTokens)) return null;
@@ -38,7 +40,7 @@ public class ContextCompressor
         int keepCount = Math.Min(_recentRoundsToKeep, rounds.Count - 1);
         if (keepCount < 1)
         {
-            return CompressToolResults(session, originalTokens, allMessages);
+            return await CompressToolResultsAsync(session, originalTokens, allMessages);
         }
 
         int summarizeCount = rounds.Count - keepCount;
@@ -54,7 +56,7 @@ public class ContextCompressor
         string summary;
         try
         {
-            summary = SummarizeWithLlm(toSummarize) ?? "(summary unavailable)";
+            summary = await SummarizeWithLlm(toSummarize) ?? "(summary unavailable)";
         }
         catch
         {
@@ -74,7 +76,7 @@ public class ContextCompressor
             $"LLM summarized {summarizeCount} rounds");
     }
 
-    private CompressionResult? CompressToolResults(ChatSession session, int originalTokens, List<ChatMessage> messages)
+    private async Task<CompressionResult?> CompressToolResultsAsync(ChatSession session, int originalTokens, List<ChatMessage> messages)
     {
         // Identify tool-call blocks
         var blocks = new List<ToolBlock>();
@@ -117,7 +119,7 @@ public class ContextCompressor
             toSummarize.AddRange(blocks[i].Messages);
 
         string summary;
-        try { summary = SummarizeToolResultsWithLlm(toSummarize) ?? "(summary unavailable)"; }
+        try { summary = await SummarizeToolResultsWithLlm(toSummarize) ?? "(summary unavailable)"; }
         catch { return null; }
 
         // Rebuild
@@ -156,7 +158,7 @@ public class ContextCompressor
             $"LLM summarized {summarizeCount} tool-call blocks");
     }
 
-    private string? SummarizeWithLlm(List<ChatMessage> oldMessages)
+    private async Task<string?> SummarizeWithLlm(List<ChatMessage> oldMessages)
     {
         var conversationText = new StringBuilder();
         foreach (var msg in oldMessages)
@@ -207,10 +209,10 @@ Rules:
             new { role = "user", content = $"Conversation to summarize:\n\n{conversationText}" },
         };
 
-        return _llmClient.CompleteAsync(messages, 1024).Result;
+        return await _llmClient.CompleteAsync(messages, 1024);
     }
 
-    private string? SummarizeToolResultsWithLlm(List<ChatMessage> toolMessages)
+    private async Task<string?> SummarizeToolResultsWithLlm(List<ChatMessage> toolMessages)
     {
         var toolText = new StringBuilder();
         foreach (var msg in toolMessages)
@@ -240,7 +242,7 @@ Keep it under 400 words.
             new { role = "user", content = $"Tool results to summarize:\n\n{toolText}" },
         };
 
-        return _llmClient.CompleteAsync(messages, 800).Result;
+        return await _llmClient.CompleteAsync(messages, 800);
     }
 
     private string FallbackTruncate(List<ChatMessage> messages)

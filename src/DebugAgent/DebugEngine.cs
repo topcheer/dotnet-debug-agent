@@ -74,7 +74,7 @@ public class DebugEngine
             // Check if context compression is needed
             if (round > 0 && _compressor.NeedsCompression(session.CurrentContextTokens))
             {
-                var result = _compressor.Compress(session);
+                var result = await _compressor.CompressAsync(session);
                 if (result != null)
                 {
                     callback.OnContent?.Invoke($"\n\n> [Context auto-compressed: {result.OriginalTokens} → ~{result.CompressedTokens} tokens ({result.Strategy})]\n\n");
@@ -208,8 +208,16 @@ public class DebugEngine
 
         ## Your Capabilities
         You can call tools to inspect the live application. You have {_tools.Names().Count} tools available
-        across 10 inspectors: DI Container, Configuration, HTTP Endpoints, Health Checks,
-        Logging, EF Core, Memory Cache, Background Services, .NET Runtime, and HTTP Requests.
+        across {CategorizeTools()} diagnostic categories. Key capabilities include:
+        - Runtime & GC diagnostics (heap, threads, GC stats)
+        - HTTP request analysis (active, slow, outbound)
+        - Database & EF Core queries, migrations
+        - Security, error tracking, health checks
+        - Cache, Redis, WebSocket connections
+        - CPU profiling, memory leak detection, snapshots
+        - Configuration, feature flags, endpoint testing
+        - Service collection (DI), background services, logging
+        - Deployment info, metrics, file handles
 
         ## Workflow
         1. Understand the developer's problem description
@@ -224,4 +232,50 @@ public class DebugEngine
         - When you find a problem, explain the root cause and give concrete fix suggestions
         - You can call multiple tools in parallel if they are independent
         """;
+
+    private string CategorizeTools()
+    {
+        var names = _tools.Names();
+        var categories = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var name in names)
+        {
+            var cat = ExtractCategory(name);
+            categories.TryGetValue(cat, out var count);
+            categories[cat] = count + 1;
+        }
+        return $"{categories.Count} categories";
+    }
+
+    private static string ExtractCategory(string toolName)
+    {
+        var parts = toolName.Split('_');
+        var keyword = parts.Length >= 2 ? parts[1] : (parts.Length > 0 ? parts[0] : "");
+        return keyword switch
+        {
+            "heap" or "memory" or "gc" or "leak" => "Memory & GC",
+            "snapshot" or "compare" => "Snapshots",
+            "thread" or "lock" or "deadlock" or "contention" => "Threading",
+            "health" => "Health Checks",
+            "error" => "Error Tracking",
+            "config" or "env" => "Configuration",
+            "cache" => "Cache",
+            "http" or "outbound" or "request" => "HTTP",
+            "ef" or "db" or "migration" => "Database",
+            "redis" => "Redis",
+            "ws" or "websocket" => "WebSocket",
+            "cpu" or "profile" => "Profiling",
+            "feature" or "flag" => "Feature Flags",
+            "test" or "endpoint" => "Endpoint Testing",
+            "pool" or "connection" => "Connection Pool",
+            "metric" or "counter" => "Metrics",
+            "build" or "deployment" or "version" => "Build & Deployment",
+            "service" or "registered" => "Service Registry",
+            "log" => "Logging",
+            "fd" or "handle" => "File Handles",
+            "security" or "auth" or "cors" => "Security",
+            "background" => "Background Services",
+            "module" or "loaded" => "Modules",
+            _ => "Runtime",
+        };
+    }
 }

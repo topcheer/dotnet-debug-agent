@@ -15,10 +15,21 @@ public class LLMClient
 
     public LLMConfig Config => _cfg;
 
+    // Static shared handler to avoid socket exhaustion (.NET HttpClient anti-pattern).
+    // All LLMClient instances reuse the same underlying socket pool.
+    private static readonly HttpClientHandler _sharedHandler = new()
+    {
+        UseProxy = false,
+        MaxConnectionsPerServer = 8,
+    };
+
     public LLMClient(LLMConfig cfg)
     {
         _cfg = cfg;
-        _client = new HttpClient { Timeout = TimeSpan.FromSeconds(cfg.TimeoutSeconds) };
+        _client = new HttpClient(_sharedHandler, disposeHandler: false)
+        {
+            Timeout = TimeSpan.FromSeconds(cfg.TimeoutSeconds),
+        };
     }
 
     /// <summary>
@@ -100,9 +111,9 @@ public class LLMClient
                 int? completionTokens = null;
 
                 using var reader = new StreamReader(stream);
-                while (!reader.EndOfStream)
+                string? line;
+                while ((line = await reader.ReadLineAsync()) != null)
                 {
-                    var line = await reader.ReadLineAsync();
                     if (string.IsNullOrEmpty(line)) continue;
                     if (!line.StartsWith("data: ")) continue;
 

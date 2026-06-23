@@ -82,6 +82,24 @@ public static class DebugAgentExtensions
         var engine = app.Services.GetRequiredService<DebugEngine>();
         var sessionId = $"session-{Guid.NewGuid():N}".Substring(0, 16);
 
+        // CORS middleware — applies to all agent routes
+        app.Use(async (ctx, next) =>
+        {
+            if (ctx.Request.Path.StartsWithSegments(path))
+            {
+                ctx.Response.Headers.AccessControlAllowOrigin = "*";
+                ctx.Response.Headers.AccessControlAllowMethods = "GET, POST, OPTIONS";
+                ctx.Response.Headers.AccessControlAllowHeaders = "Content-Type, Authorization";
+
+                if (ctx.Request.Method == "OPTIONS")
+                {
+                    ctx.Response.StatusCode = 204;
+                    return;
+                }
+            }
+            await next();
+        });
+
         // Chat UI
         app.MapGet(path, () => Results.Text(ChatPage.Html, "text/html"));
 
@@ -138,9 +156,12 @@ public static class DebugAgentExtensions
         });
 
         // Clear conversation
-        app.MapPost($"{path}/api/clear", (HttpContext ctx) =>
+        app.MapPost($"{path}/api/clear", async (HttpContext ctx) =>
         {
-            engine.ClearSession(sessionId);
+            using var reader = new StreamReader(ctx.Request.Body);
+            var body = JsonSerializer.Deserialize<JsonElement>(await reader.ReadToEndAsync());
+            var sid = body.TryGetProperty("sessionId", out var sidEl) ? sidEl.GetString() ?? sessionId : sessionId;
+            engine.ClearSession(sid);
             return Results.Json(new { status = "cleared" });
         });
 
